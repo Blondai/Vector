@@ -15,11 +15,11 @@ pub struct Vector<T: Copy> {
 }
 
 impl<T: Copy> Vector<T> {
-    /// Creates a new [`Vector`] instance based on the [`Info`] given.
+    /// Creates an empty [`Vector`] instance based on the [`Info`] given.
     ///
     /// This will always use [`Vec::with_capacity`].
     #[inline]
-    pub fn new(info: Info<T>) -> Self {
+    pub fn with_capacity(info: Info<T>) -> Self {
         let data: Vec<T> = Vec::with_capacity(info.len());
         Self { data, info }
     }
@@ -155,10 +155,8 @@ impl<T: Copy> Vector<T> {
 
     /// Turns a [`Vector`] into a [`Iterator`].
     #[inline]
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a T> + 'a {
-        VectorIter {
-            inner: self.data.iter(),
-        }
+    pub fn iter(&self) -> std::slice::Iter<T> {
+        self.data.iter()
     }
 }
 
@@ -425,25 +423,6 @@ where
     #[inline]
     fn div_assign(&mut self, other: &'a Vector<T>) -> () {
         self.try_div_assign(other).unwrap();
-    }
-}
-
-/// A wrapper around a [`std::slice::Iter`] to iterate over [`Vector`].
-#[derive(Debug)]
-struct VectorIter<'a, T> {
-    inner: std::slice::Iter<'a, T>,
-}
-
-impl<'a, T: Copy> Iterator for VectorIter<'a, T> {
-    type Item = &'a T;
-
-    /// Returns the next item in the [`VectorIter`].
-    ///
-    /// This uses the `next` method from the [`Vec`] struct.
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        // Forward to `Vec::next`
-        self.inner.next()
     }
 }
 

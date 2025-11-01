@@ -107,7 +107,18 @@ impl<T: Copy> Info<T> {
     }
 }
 
-/// A enum for handling error involving the [`Info`] struct.
+impl<T: Copy + Display> Display for Info<T> {
+    /// Displays the [`Info`] instance.
+    fn fmt(&self, format: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            format,
+            "start: {}, end: {}, fallback start: {}, fallback end: {}",
+            self.start, self.end, self.fallback_start, self.fallback_end
+        )
+    }
+}
+
+/// An enum for handling error involving the [`Info`] struct.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum InfoError {
     /// The `end` index is smaller than the `start` index.
@@ -119,14 +130,15 @@ impl InfoError {
     #[inline]
     pub fn check_interval(start: usize, end: usize) -> Result<(), InfoError> {
         if start <= end {
-            Err(InfoError::InvalidInterval { start, end })
-        } else {
             Ok(())
+        } else {
+            Err(InfoError::InvalidInterval { start, end })
         }
     }
 }
 
 impl Display for InfoError {
+    /// Displays the [`InfoError`] instance.
     fn fmt(&self, format: &mut Formatter) -> fmt::Result {
         match self {
             InfoError::InvalidInterval { start, end } => {
