@@ -81,12 +81,11 @@ impl<T: Copy> Vector<T> {
         }
     }
 
-    /// Tries to [`AddAssign`].
-    ///
-    /// This will return an error when the info is not compatible.
-    pub fn try_add_assign(&mut self, other: &Vector<T>) -> Result<(), VectorError>
+    /// Helper to apply an operation to two [`Vector`]s.
+    fn try_op_assign<F>(&mut self, other: &Vector<T>, op: F) -> Result<(), VectorError>
     where
-        T: AddAssign + PartialEq,
+        F: Fn(&mut T, &T),
+        T: PartialEq,
     {
         VectorError::check_interval(&self.info, &other.info)?;
         VectorError::check_fallback(&self.info, &other.info)?;
@@ -94,9 +93,54 @@ impl<T: Copy> Vector<T> {
         self.data
             .iter_mut()
             .zip(other.data.iter())
-            .for_each(|(a, b)| *a += *b);
+            .for_each(|(a, b)| op(a, b));
 
         Ok(())
+    }
+
+    /// Helper to apply an operation to two [`Vector`]s.
+    fn try_op<F>(&self, other: &Vector<T>, op: F) -> Result<Vector<T>, VectorError>
+    where
+        F: Fn(&T, &T) -> T,
+        T: PartialEq,
+    {
+        VectorError::check_interval(&self.info, &other.info)?;
+        VectorError::check_fallback(&self.info, &other.info)?;
+
+        let new_data: Vec<T> = self
+            .data
+            .iter()
+            .zip(other.data.iter())
+            .map(|(a, b)| op(a, b))
+            .collect();
+
+        Ok(Vector {
+            data: new_data,
+            info: self.info,
+        })
+    }
+
+    /// Helper to apply an operation to a [`Vector`] and a generic.
+    fn scalar_op<F>(&self, other: T, op: F) -> Vector<T>
+    where
+        F: Fn(&T, &T) -> T,
+    {
+        let new_data: Vec<T> = self.data.iter().map(|a| op(a, &other)).collect();
+
+        Vector {
+            data: new_data,
+            info: self.info,
+        }
+    }
+
+    /// Tries to [`AddAssign`].
+    ///
+    /// This will return an error when the info is not compatible.
+    pub fn try_add_assign(&mut self, other: &Vector<T>) -> Result<(), VectorError>
+    where
+        T: AddAssign + PartialEq,
+    {
+        self.try_op_assign(other, |a, b| *a += *b)
     }
 
     /// Tries to [`SubAssign`].
@@ -106,15 +150,7 @@ impl<T: Copy> Vector<T> {
     where
         T: SubAssign + PartialEq,
     {
-        VectorError::check_interval(&self.info, &other.info)?;
-        VectorError::check_fallback(&self.info, &other.info)?;
-
-        self.data
-            .iter_mut()
-            .zip(other.data.iter())
-            .for_each(|(a, b)| *a -= *b);
-
-        Ok(())
+        self.try_op_assign(other, |a, b| *a -= *b)
     }
 
     /// Tries to [`MulAssign`].
@@ -124,15 +160,7 @@ impl<T: Copy> Vector<T> {
     where
         T: MulAssign + PartialEq,
     {
-        VectorError::check_interval(&self.info, &other.info)?;
-        VectorError::check_fallback(&self.info, &other.info)?;
-
-        self.data
-            .iter_mut()
-            .zip(other.data.iter())
-            .for_each(|(a, b)| *a *= *b);
-
-        Ok(())
+        self.try_op_assign(other, |a, b| *a *= *b)
     }
 
     /// Tries to [`DivAssign`].
@@ -142,21 +170,19 @@ impl<T: Copy> Vector<T> {
     where
         T: DivAssign + PartialEq,
     {
-        VectorError::check_interval(&self.info, &other.info)?;
-        VectorError::check_fallback(&self.info, &other.info)?;
-
-        self.data
-            .iter_mut()
-            .zip(other.data.iter())
-            .for_each(|(a, b)| *a /= *b);
-
-        Ok(())
+        self.try_op_assign(other, |a, b| *a /= *b)
     }
 
     /// Turns a [`Vector`] into a [`Iterator`].
     #[inline]
-    pub fn iter(&self) -> std::slice::Iter<T> {
+    pub fn iter(&'_ self) -> std::slice::Iter<'_, T> {
         self.data.iter()
+    }
+
+    /// Turns a [`Vector`] into a mutable [`Iterator`].
+    #[inline]
+    pub fn iter_mut(&'_ mut self) -> std::slice::IterMut<'_, T> {
+        self.data.iter_mut()
     }
 }
 
@@ -217,20 +243,7 @@ where
     ///
     /// This will return an error if the [`Info`] instances are incompatible.
     fn add(self, other: &'b Vector<T>) -> Self::Output {
-        VectorError::check_interval(&self.info, &other.info)?;
-        VectorError::check_fallback(&self.info, &other.info)?;
-
-        let new_data: Vec<T> = self
-            .data
-            .iter()
-            .zip(other.data.iter())
-            .map(|(a, b)| *a + *b)
-            .collect();
-
-        Ok(Vector {
-            data: new_data,
-            info: self.info,
-        })
+        self.try_op(other, |a, b| *a + *b)
     }
 }
 
@@ -244,20 +257,7 @@ where
     ///
     /// This will return an error if the [`Info`] instances are incompatible.
     fn sub(self, other: &'b Vector<T>) -> Self::Output {
-        VectorError::check_interval(&self.info, &other.info)?;
-        VectorError::check_fallback(&self.info, &other.info)?;
-
-        let new_data: Vec<T> = self
-            .data
-            .iter()
-            .zip(other.data.iter())
-            .map(|(a, b)| *a - *b)
-            .collect();
-
-        Ok(Vector {
-            data: new_data,
-            info: self.info,
-        })
+        self.try_op(other, |a, b| *a - *b)
     }
 }
 
@@ -288,20 +288,7 @@ where
     ///
     /// This will return an error if the [`Info`] instances are incompatible.
     fn mul(self, other: &'b Vector<T>) -> Self::Output {
-        VectorError::check_interval(&self.info, &other.info)?;
-        VectorError::check_fallback(&self.info, &other.info)?;
-
-        let new_data: Vec<T> = self
-            .data
-            .iter()
-            .zip(other.data.iter())
-            .map(|(a, b)| *a * *b)
-            .collect();
-
-        Ok(Vector {
-            data: new_data,
-            info: self.info,
-        })
+        self.try_op(other, |a, b| *a * *b)
     }
 }
 
@@ -315,20 +302,7 @@ where
     ///
     /// This will return an error if the [`Info`] instances are incompatible.
     fn div(self, other: &'b Vector<T>) -> Self::Output {
-        VectorError::check_interval(&self.info, &other.info)?;
-        VectorError::check_fallback(&self.info, &other.info)?;
-
-        let new_data: Vec<T> = self
-            .data
-            .iter()
-            .zip(other.data.iter())
-            .map(|(a, b)| *a / *b)
-            .collect();
-
-        Ok(Vector {
-            data: new_data,
-            info: self.info,
-        })
+        self.try_op(other, |a, b| *a / *b)
     }
 }
 
@@ -340,12 +314,7 @@ where
 
     /// Scalar [`Mul`]tiplication.
     fn mul(self, other: T) -> Self::Output {
-        let new_data: Vec<T> = self.data.iter().map(|a| *a * other).collect();
-
-        Vector {
-            data: new_data,
-            info: self.info,
-        }
+        self.scalar_op(other, |a, other| *a * *other)
     }
 }
 
@@ -357,12 +326,7 @@ where
 
     /// Scalar [`Div`]ision.
     fn div(self, other: T) -> Self::Output {
-        let new_data: Vec<T> = self.data.iter().map(|a| *a / other).collect();
-
-        Vector {
-            data: new_data,
-            info: self.info,
-        }
+        self.scalar_op(other, |a, other| *a / *other)
     }
 }
 
@@ -423,6 +387,25 @@ where
     #[inline]
     fn div_assign(&mut self, other: &'a Vector<T>) -> () {
         self.try_div_assign(other).unwrap();
+    }
+}
+
+impl<T: Copy + Display> Display for Vector<T> {
+    /// Displays the [`Vector`] instance.
+    ///
+    /// The output format is `[item1, item2, ...]`.
+    fn fmt(&self, format: &mut Formatter<'_>) -> fmt::Result {
+        write!(format, "[")?;
+
+        for (i, item) in self.data.iter().enumerate() {
+            if i > 0 {
+                write!(format, ", ")?;
+            }
+
+            write!(format, "{}", item)?;
+        }
+
+        write!(format, "]")
     }
 }
 
