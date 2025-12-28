@@ -1,6 +1,8 @@
 # Folder
 /target
 /.idea
+/.docs
+/.old
 
 # Files
 cargo.lock
