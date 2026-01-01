@@ -1,10 +1,10 @@
 use std::{
     fmt::Debug,
-    ops::{Index, IndexMut},
+    ops::{Index, IndexMut, Range, RangeInclusive},
     slice::{Iter, IterMut},
 };
 
-use crate::{BorrowedVector, Vector, VectorError, Vectorable, question_mark};
+use crate::{BorrowedVector, Vector, VectorError, Vectorable};
 
 /// A wrapper struct around a generic [`Vec`] allowing the automatic calculation of indexing offsets.
 ///
@@ -28,15 +28,15 @@ impl<V: Vectorable> OwnedVector<V> {
     ///
     /// # Errors
     ///
-    /// * [VectorError::Order] - The order of the arguments is wrong.
+    /// * [`VectorError::Order`] - The order of the arguments is wrong.
     /// `start` > `end`.
     /// * [`VectorError::Length`] - The expected length does not match the provided one.
     /// `vec.len() != end - start + 1`.
     #[inline]
     pub fn from_vec(vec: Vec<V>, start: usize, end: usize) -> Result<Self, VectorError> {
         // Not possible as const fn (Vec deconstruction)
-        question_mark!(VectorError::check_order(start, end));
-        question_mark!(VectorError::check_len(vec.len(), start, end));
+        VectorError::check_order(start, end)?;
+        VectorError::check_len(vec.len(), start, end)?;
 
         Ok(Self {
             vector: vec,
@@ -128,6 +128,60 @@ impl<V: Vectorable> OwnedVector<V> {
     pub fn len(&self) -> usize {
         self.vector.len()
     }
+
+    /// Returns a slice inside the underlying vector based on the offset range from `start` to `end`.
+    ///
+    /// # Errors
+    ///
+    /// * [`VectorError::Indexing`] - The `start` or `end` is outside the supported range.
+    /// `start` < `self.start` or `end` > `self.end` + 1.
+    pub fn get_range(&self, start: usize, end: usize) -> Result<&[V], VectorError> {
+        VectorError::check_order(start, end)?;
+
+        if start < self.start {
+            Err(VectorError::Indexing { index: self.start })
+        } else if end > self.end + 1 {
+            Err(VectorError::Indexing { index: self.end })
+        } else {
+            let start_offest: usize = start - self.start;
+            let end_offset: usize = end - self.start;
+
+            Ok(&self.vector[start_offest..end_offset])
+        }
+    }
+
+    /// Returns an inclusive slice inside the underlying vector based on the offset range from `start` to `end`.
+    ///
+    /// # Errors
+    ///
+    /// * [`VectorError::Indexing`] - The `start` or `end` is outside the supported range.
+    /// `start` < `self.start` or `end` > `self.end`.
+    pub fn get_range_inclusive(&self, start: usize, end: usize) -> Result<&[V], VectorError> {
+        VectorError::check_order(start, end)?;
+
+        if start < self.start {
+            Err(VectorError::Indexing { index: self.start })
+        } else if end > self.end {
+            Err(VectorError::Indexing { index: self.end })
+        } else {
+            let start_offest: usize = start - self.start;
+            let end_offset: usize = end - self.start;
+
+            Ok(&self.vector[start_offest..=end_offset])
+        }
+    }
+
+    /// Turns the [`OwnedVector`] into a [`BorrowedVector`] using the [`OwnedVector::as_slice`] method.
+    ///
+    /// # Errors
+    ///
+    /// * [`VectorError::Order`] - The order of the arguments is wrong.
+    /// `start` > `end`.
+    /// * [`VectorError::Length`] - The expected length does not match the provided one.
+    /// `vec.len() != end - start + 1`.a
+    pub fn to_borrowed(&'_ self) -> Result<BorrowedVector<'_, V>, VectorError> {
+        BorrowedVector::try_new(self.as_slice(), self.start, self.end)
+    }
 }
 
 impl<V: Default + Vectorable> OwnedVector<V> {
@@ -165,6 +219,30 @@ impl<V: Vectorable> IndexMut<usize> for OwnedVector<V> {
     }
 }
 
+impl<V: Vectorable> Index<RangeInclusive<usize>> for OwnedVector<V> {
+    type Output = [V];
+
+    #[inline]
+    fn index(&self, range: RangeInclusive<usize>) -> &Self::Output {
+        let start: usize = range.start() - self.start;
+        let end: usize = range.end() - self.start;
+
+        &self.vector[start..=end]
+    }
+}
+
+impl<V: Vectorable> Index<Range<usize>> for OwnedVector<V> {
+    type Output = [V];
+
+    #[inline]
+    fn index(&self, range: Range<usize>) -> &Self::Output {
+        let start: usize = range.start - self.start;
+        let end: usize = range.end - self.start;
+
+        &self.vector[start..end]
+    }
+}
+
 impl<V: Vectorable> Vector<V> for OwnedVector<V> {
     /// Returns the `start` index of the [`OwnedVector`].
     ///
@@ -182,12 +260,9 @@ impl<V: Vectorable> Vector<V> for OwnedVector<V> {
         self.end
     }
 
-    /// Returns an [`Iter`]ator of the underlying [`Vec`].
-    ///
-    /// This is simply a getter of the `iter` and will not consider the offest indexing.
     #[inline]
-    fn iter(&self) -> Iter<'_, V> {
-        self.vector.iter()
+    fn as_slice(&self) -> &[V] {
+        &self.vector
     }
 }
 

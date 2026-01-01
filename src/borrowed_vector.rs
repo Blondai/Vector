@@ -1,13 +1,24 @@
-use std::{ops::Index, slice::Iter};
+use std::{
+    ops::{Index, Range, RangeInclusive},
+    slice::Iter,
+};
 
 use crate::{Vector, VectorError, Vectorable, question_mark};
 
 /// A wrapper struct around a generic slice of a [`Vec`] allowing the automatic calculation of indexing offsets.
 ///
 /// The generic value needs to implement the [`Vectorable`] trait.
+#[derive(Debug, Copy, Clone)]
 pub struct BorrowedVector<'a, V: Vectorable> {
+    /// The slice containing the values.
     slice: &'a [V],
+
+    /// The start to allow the correct index offsetting.
     start: usize,
+
+    /// The end to allow to assertion of the correct length.
+    ///
+    /// Note that the end is included.
     end: usize,
 }
 
@@ -103,6 +114,48 @@ impl<'a, V: Vectorable> BorrowedVector<'a, V> {
     pub fn len(&self) -> usize {
         self.slice.len()
     }
+
+    /// Returns a slice inside the underlying vector based on the offset range from `start` to `end`.
+    ///
+    /// # Errors
+    ///
+    /// * [`VectorError::Indexing`] - The `start` or `end` is outside the supported range.
+    /// `start` < `self.start` or `end` > `self.end` + 1.
+    pub fn get_range(&self, start: usize, end: usize) -> Result<&[V], VectorError> {
+        VectorError::check_order(start, end)?;
+
+        if start < self.start {
+            Err(VectorError::Indexing { index: self.start })
+        } else if end > self.end + 1 {
+            Err(VectorError::Indexing { index: self.end })
+        } else {
+            let start_offest: usize = start - self.start;
+            let end_offset: usize = end - self.start;
+
+            Ok(&self.slice[start_offest..end_offset])
+        }
+    }
+
+    /// Returns an inclusive slice inside the underlying vector based on the offset range from `start` to `end`.
+    ///
+    /// # Errors
+    ///
+    /// * [`VectorError::Indexing`] - The `start` or `end` is outside the supported range.
+    /// `start` < `self.start` or `end` > `self.end`.
+    pub fn get_range_inclusive(&self, start: usize, end: usize) -> Result<&[V], VectorError> {
+        VectorError::check_order(start, end)?;
+
+        if start < self.start {
+            Err(VectorError::Indexing { index: self.start })
+        } else if end > self.end {
+            Err(VectorError::Indexing { index: self.end })
+        } else {
+            let start_offest: usize = start - self.start;
+            let end_offset: usize = end - self.start;
+
+            Ok(&self.slice[start_offest..=end_offset])
+        }
+    }
 }
 
 impl<V: Vectorable> Index<usize> for BorrowedVector<'_, V> {
@@ -112,6 +165,30 @@ impl<V: Vectorable> Index<usize> for BorrowedVector<'_, V> {
     fn index(&self, index: usize) -> &Self::Output {
         // Underflow will wrap around and panic
         &self.slice[index.wrapping_sub(self.start)]
+    }
+}
+
+impl<V: Vectorable> Index<RangeInclusive<usize>> for BorrowedVector<'_, V> {
+    type Output = [V];
+
+    #[inline]
+    fn index(&self, range: RangeInclusive<usize>) -> &Self::Output {
+        let start: usize = range.start() - self.start;
+        let end: usize = range.end() - self.start;
+
+        &self.slice[start..=end]
+    }
+}
+
+impl<V: Vectorable> Index<Range<usize>> for BorrowedVector<'_, V> {
+    type Output = [V];
+
+    #[inline]
+    fn index(&self, range: Range<usize>) -> &Self::Output {
+        let start: usize = range.start - self.start;
+        let end: usize = range.end - self.start;
+
+        &self.slice[start..end]
     }
 }
 
@@ -132,12 +209,9 @@ impl<'a, V: Vectorable> Vector<V> for BorrowedVector<'a, V> {
         self.end
     }
 
-    /// Returns an [`Iter`]ator of the underlying [`Vec`].
-    ///
-    /// This is simply a getter of the `iter` and will not consider the offest indexing.
     #[inline]
-    fn iter(&self) -> Iter<'_, V> {
-        self.slice.iter()
+    fn as_slice(&self) -> &[V] {
+        self.slice
     }
 }
 

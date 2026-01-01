@@ -1,4 +1,7 @@
-use std::{ops::Index, slice::Iter};
+use std::{
+    ops::{Index, Range, RangeInclusive},
+    slice::Iter,
+};
 
 use crate::{VectorError, Vectorable};
 
@@ -6,14 +9,22 @@ use crate::{VectorError, Vectorable};
 use crate::{BorrowedVector, OwnedVector};
 
 /// A trait to combine the usage [`OwnedVector`] and [`BorrowedVector`].
-pub trait Vector<V: Vectorable>: Index<usize> {
+pub trait Vector<V: Vectorable>:
+    Index<usize, Output = V>
+    + Index<RangeInclusive<usize>, Output = [V]>
+    + Index<Range<usize>, Output = [V]>
+{
     #[must_use]
     fn start(&self) -> usize;
 
     #[must_use]
     fn end(&self) -> usize;
 
-    fn iter(&self) -> Iter<'_, V>;
+    fn as_slice(&self) -> &[V];
+
+    fn iter(&self) -> Iter<'_, V> {
+        self.as_slice().iter()
+    }
 
     /// Checks whether two [`Vector`]s are compatible.
     ///
